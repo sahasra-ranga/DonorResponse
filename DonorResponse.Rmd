@@ -1,0 +1,155 @@
+---
+title: "DonorResponse"
+output: html_document
+date: "2025-07-16"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+```{r load-libraries, echo=TRUE, warning = FALSE, message = FALSE}
+# load required packages
+library(dplyr)
+library(tidyr)
+library(car) # for linearHypothesis()
+library(psych) # for pairs.panels()
+library(factoextra) # for fviz_cluster()
+library(ggplot2)
+library(caret)
+```
+The data "donorgift.csv" contains information on donors' behaviours and
+their charitable contributions through mailers. It contains 4268
+observations on 8 variables.
+
+-   response: indicates if the donor responded with a gift. (respond =
+    yes if responded with gift, otherwise no)
+
+-   gift: the amount of gift in Dutch guilders
+
+-   responselast: indicates if the donor responded to the most recent
+    mailing (1 if responded to most recent mailing, otherwise 0)
+
+-   weekslast: number of weeks since donor's last response
+
+-   propresp: the response rate to mailings
+
+-   mailsfreqyear: represents the frequency of mailings per year (low,
+    medium, high, very high)
+
+-   giftlast: the amount of most recent gift
+
+-   avggift: average of past gifts
+
+Charities rely on donors' willingness to contribute. This dataset
+contains information on 4268 donors from previous donation drives. Each
+observation describes a donor's behaviour and response to prior donation
+mailers.
+
+```{r 1-read-dataset, echo=TRUE}
+df <- read.csv('donorgift.csv')
+```
+
+Let us fit a logistic regression model by doing the following
+-   Create a binary factor variable, 'donor.response' that contains a 1
+    if the donor responded with a gift and a 0 if the donor did not
+    respond with a gift.
+-   Perform a logistic regression with 'donor.response' as the response
+    and 'weekslast', 'giftlast' and 'avggift' as predictors. Explore which of the predictors appear to
+    be statistically significant?
+-   Example: Find the probability that a donor whose number of weeks since the
+    donor's last response was 39 weeks, the amount of most recent gift
+    was 28 Dutch guilders and the average of past gift was 36 Dutch
+    guilders, will respond with a gift. 
+
+```{r, q3a, echo=TRUE}
+df$donor.response <- ifelse(df$response == "yes", 1, 0)
+df$donor.response <- as.factor(df$donor.response)
+mod1 <- glm(formula = donor.response ~ weekslast +giftlast + avggift, family = "binomial", data = df)
+summary(mod1)
+# H0: βpredictor variable = 0 (slope parameter for predictor variable = 0)
+# H1: βpredictor variable != 0 (slope parameter for predictor variable != 0)
+#The p-value for the predictor variable 'weekslast' is <2e-16, which is below 0.05, hence we have sufficient evidence to reject the null hypothesis, and accept the alternate hypothesis (H1) and conclude that 'weekslast' is a statistically significant predictor at the 5% level of significance. The p-values for the predictor variables 'giftlast' is 0.372, which is above 0.05, and the p-value for the predictor variable 'avggift' is 0.641, which is also above 0.05, hence we do not have sufficient evidence to reject the null hypothesis, and accept H0, and we can conclude that 'giftlast' and 'avggift are not statistically significant predictors at the 5% level of significance. 
+
+lgodds = 0.6798845 -0.0209128*39 + 0.0041681*28 -0.002395*36
+lgodds = -0.1052279
+#lgodds refers to log(odds)
+odds = exp(lgodds)
+odds
+p = odds/(1+odds)
+p
+# The probability that a donor whose number of weeks since the donor's last response was 39 weeks, the amount of most recent gift was 28 Dutch guilders and the average of past gift was 36 Dutch guilders, will respond with a gift is 0.474(3s.f).
+#easier way
+new_data <- data.frame(weekslast=39, giftlast=28, avggift=36)
+predict(mod1, newdata = new_data, type = "response")
+
+```
+Analysis and interpretation of the logistic regression model
+
+```{r, q3b, echo=TRUE}
+# The coefficient of the variable 'giftlast' is 0.0041681. This means that as 'giftlast' increases by 1 unit (1 Dutch guilder), the log(odds) of a donor responding with a gift increases by 0.00417 (3 s.f) on the average, keeping all other variables such as 'weekslast' and 'avggift' constant. (odds = probability/probability+1)
+
+exp(0.00417) 
+# This means that the odds increase by a multiplicative factor of 1.004179 on the average with every unit increase in 'giftlast', which is approximately 0.417%, keeping all other variables such as weekslast and avggift constant.
+
+#weekslast
+#coefficient of weekslast is -0.0209128
+inc <- exp(-0.0209128)
+inc
+# Hence the odds decrease by a multiplicative factor of 0.9793044 (3 s.f)
+#corrections: The odds INCREASE by a multiplicative factor of 0.979 (dont say decrease) for one unit increase in the number of weeks since the dono's last response, keeping all other predictors constant
+
+
+# For a 50 unit increase, the log(odds) increase by 
+#0.0041681*50 = 0.208405
+# This means the log(odds) increase by a multiplicative factor of 
+#exp(0.208405) = 1.231712
+# for a 50 guilder increase in the amount of most recent gift of a donor with a gift, keeping all other predictors constant
+```
+Now, we convert the 'mailsfreqyear' variable into an unordered factor. 
+Fit a new logistic regression using 'donor.response' as the response, using
+'weekslast', 'mailsfreqyear', 'giftlast' and 'avggift' as predictors. 
+```{r, q3c, echo=TRUE}
+is.ordered(df$mailsfreqyear)
+df$mailsfreqyear = factor(df$mailsfreqyear, levels = c("low", "medium", "high", "very high"), labels = c("low", "medium", "high", "very high"))
+df$mailsfreqyear <- relevel(df$mailsfreqyear, ref = 'medium')
+contrasts(df$mailsfreqyear)
+
+mod2 <- glm(formula = donor.response ~ weekslast +giftlast + avggift + mailsfreqyear, family = "binomial", data = df)
+summary(mod2)
+
+exp(0.150639)
+
+#The regression coefficient of the dummy variable 'very high' is 0.150639. Since the reference group is 'medium', representing donors who receive a medium frequency of mailings per year, this regression coefficient suggests that the odds change by a multiplicative factor of 1.16 (2 d.p.) between donors who receive a medium frequency of mailings to donors who receive a very high frequency of mailings. 
+#interpretation:
+# "Very high" donors are 1.16 more likely to respond with a gift compared to a donor with medium mail frequ, keeping all other variables constant
+```
+
+```{r, q3d, echo=TRUE}
+df1 <- df%>%
+  mutate(pred_prob= predict(mod2, newdata=.,
+                       type = "response")) %>%
+  mutate(pred_outcome = ifelse(pred_prob >0.4, 1, 0))
+#positive -> 1, negative -> 0
+#TP -> donor.response = 1, pred_outcome = 1
+
+# FP -> donor.response = 0, pred_outcome = 1
+# TN -> donor.response = 0, pred_outcome = 0
+# FN -> donor.response = 1, pred_outcome = 0
+
+pred_probability = predict(mod2, data = df, type = "response")
+pred_respond = ifelse(pred_probability >= 0.4, 1, 0)
+confusionMatrix(factor(df1$pred_outcome), factor(df$donor.response), positive = '1')
+# The count of true positives is 1237, true negatives is 1645, false positives is 916 and false negatives is 470.
+
+# From the confusion matrix above, the model's sensitivity is 0.725 and the model's specificity is 0.642 (3 s.f.). 
+# The accuracy of 0.675 is moderately good, however we can cannot ignore the sensitivity and specificity neverthless. The specificity value of 0.642 means that only 64.2% of donors predicted to not respond with a gift did not respond with a gift. (true negatives / total negatives predicted). Although the sensitivity value is slightly better, still only 72.5% of the instances where the donor responded with a gift, was predicted to respond with a gift. (true positive / (true positive + false negative)) Hence, we still to need to account for specificity and sensitivity despite the high overall accuracy as the model still holds a moderate risk of inaccurate prediction. 
+
+# We need to consider precision as well. Precision is true positive / (True Positive + False Positive). This value is 1237/(1237+ 916) = 0.575. This means that only 57.5% of the donors predicted to donate gifts actually donate gifts. This indicates that the model may face significant limitations in predicting the odds of a donor donating a gift.
+
+# Depends on case, e.g while testing for HIV, false negatives is much more dangerous than false positive
+#Sensitivity would reflect how well the model predicts actual gift-givers. It is the ratio of positive instances, donors that responded with a gift that are correctly detected by the classifier is 72.5%
+#Sensitivity is valuable for marketing or engagament strategies (ensuring that you are reaching people who would be receptive to donating), while specificity is important for resource allocation and avoiding wasted efforts
